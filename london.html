@@ -35,35 +35,61 @@
 </style>
 <body>
 <script src="//d3js.org/d3.v3.min.js" charset="utf-8"></script>
+<script src="//d3js.org/queue.v1.min.js"></script>
 <script src="http://labratrevenge.com/d3-tip/javascripts/d3.tip.v0.6.3.js"></script>
 <script>
 
 var width = 960,
     height = 600;
 
-var svg = d3.select("body").append("svg")
+var density_svg = d3.select("body").append("svg")
     .attr("width", width)
     .attr("height", height);
 
+queue()
+  .defer(d3.json, "london_map/density.geojson")
+  .await(draw_density);
 
-var tip = d3.tip()
-  .attr('class', 'd3-tip')
-  .offset([0, 0])
-  .html(function(d) {
-    return "<span>" + d.properties.a + ": </span><span>" + d.properties.d + "</span>";
-  });
-
-
-d3.json("london_map/density.geojson", function(error, data) {
+function draw_density(error, data) {
   if (error) {
-    return console.error(error);
+    throw error;
   }
 
-  var density_max = data.stats.d.max;
+  data_map = {};
 
-  var quantize = d3.scale.quantize()
-    .domain([0, density_max])
-    .range(d3.range(9).map(function(i) { return "q" + i + "-9"; }));
+  data.features.forEach(function(d) { data_map[d.properties.a] = d.properties.d } );
+
+  draw_london(density_svg, data.features);
+  colour_map(density_svg, data_map);
+}
+
+var population_svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+queue()
+  .defer(d3.json, "london_map/density.geojson")
+  .await(draw_population);
+
+function draw_population(error, data) {
+  if (error) {
+    throw error;
+  }
+
+  data_map = {};
+
+  data.features.forEach(function(d) { data_map[d.properties.a] = d.properties.b } );
+
+  draw_london(population_svg, data.features);
+  colour_map(population_svg, data_map);
+}
+
+/**
+  * Draws paths for London Boroughs
+  * @param path_features geojson features, with path coordinates in path_features.d and borough names in
+  *     path_features.properties.a
+  */
+function draw_london(svg, path_features, data_map) {
 
   var projection = d3.geo.mercator()
     .center([0.0, 51.4971])
@@ -75,23 +101,50 @@ d3.json("london_map/density.geojson", function(error, data) {
     .pointRadius(2);
 
   svg.selectAll(".borough")
-    .data(data.features)
+    .data(path_features)
   .enter().append("path")
-    .attr("class", function(d) { return quantize(d.properties.d) + " borough"; })
-    .attr("d", path)
-    .on("mouseover", tip.show)
-    .on("mouseout", tip.hide)
+    .attr("class", function(d) { return "borough"; })
+    .attr("d", path);
 
   // borough names
   svg.selectAll(".borough-label")
-    .data(data.features)
+    .data(path_features)
   .enter().append("text")
     .attr("class", function(d) { return "borough-label"; })
     .attr("transform", function(d) { return "translate(" + path.centroid(d) + ")"; })
     .attr("dy", ".35em")
-    .on("mouseover", tip.show)
-    .on("mouseout", tip.hide)
     .text(function(d) { return d.properties.a; });
+}
+
+/**
+  * Draws paths for London Boroughs
+  * @data_map map of values to use for colouring keyed by borough name
+  */
+function colour_map(svg, data_map) {
+
+  var value_max = d3.max(Object.keys(data_map), function(d) { return data_map[d]; } )
+
+  var quantize = d3.scale.quantize()
+    .domain([0, value_max])
+    .range(d3.range(9).map(function(i) { return "q" + i + "-9"; }));
+
+  var tip = d3.tip()
+    .attr('class', 'd3-tip')
+    .offset([0, 0])
+    .html(function(d) {
+      var name = d.properties.a;
+      return "<span>" + name + ": </span><span>" + (data_map[name]).toLocaleString() + "</span>";
+  });
+
+  svg.selectAll(".borough")
+    .attr("class", function(d) { return quantize(data_map[d.properties.a]) + " borough"; })
+    .on("mouseover", tip.show)
+    .on("mouseout", tip.hide);
+
+  // borough names
+  svg.selectAll(".borough-label")
+    .on("mouseover", tip.show)
+    .on("mouseout", tip.hide);
 
   svg.call(tip);
 
@@ -103,7 +156,7 @@ d3.json("london_map/density.geojson", function(error, data) {
     .attr("transform", function(d) { return "translate(" + d * rect_width + ", 0)"; });
 
   scale_legend.append("rect")
-    .attr("class", function(d) { return quantize(d * density_max / 8); })
+    .attr("class", function(d) { return quantize(d * value_max / 8); })
     .attr("width", rect_width - 1)
     .attr("height", rect_height);
 
@@ -111,8 +164,8 @@ d3.json("london_map/density.geojson", function(error, data) {
     .attr("x", function(d) { return  0; } )
     .attr("y", rect_height + 10)
     .attr("dy", ".35em")
-    .text(function(d) { return Math.round(d * density_max / 8); } );
-});
+    .text(function(d) { return (Math.round(d * value_max / 8)).toLocaleString(); } );
+}
 
 </script>
 </body>
