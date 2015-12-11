@@ -81,7 +81,7 @@ function initialize_scale() {
 }
 
 queue()
-  .defer(d3.json, "london_map/density.geojson")
+  .defer(d3.json, "london_data/density.geojson")
   .await(initialize_data);
 
 function initialize_data(error, loaded_data) {
